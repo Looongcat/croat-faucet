@@ -1,0 +1,109 @@
+version: '2.2'
+
+services:
+    faucet-frontend:
+        image: nginx:stable
+        restart: always
+        env_file: .env
+        container_name: faucet-frontend
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./frontend:/www:ro
+            - ./services/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+            - ./services/letsencrypt/live/$DOMAIN_NAME/fullchain.pem:/etc/ssl/fullchain.pem:ro
+            - ./services/letsencrypt/live/$DOMAIN_NAME/privkey.pem:/etc/ssl/privkey.pem:ro
+        links:
+            - faucet-php-fpm
+            - faucet-letsencrypt
+        networks:
+            - croat-faucet-network
+
+    faucet-php-fpm:
+        build: ./services/php
+        restart: always
+        env_file: .env
+        container_name: faucet-php-fpm
+        expose:
+            - "9000"
+        links:
+            - faucet-db
+        volumes:
+            - ./frontend:/www
+        networks:
+            - croat-faucet-network
+ 
+    faucet-db:
+        image: mariadb
+        env_file: .env
+        restart: always
+        container_name: faucet-db
+        expose:
+            - "3306"
+        networks:
+            - croat-faucet-network
+        volumes:
+            - ./services/mariadb/init:/docker-entrypoint-initdb.d:ro
+            - ./services/mariadb/mysql:/var/lib/mysql:rw
+            - ./services/mariadb/logs:/var/log/mysql:rw
+        environment:
+            - MYSQL_USER=$DB_USER
+            - MYSQL_PASSWORD=$DB_PASS
+            - MYSQL_ROOT_PASSWORD=$DB_ROOT_PASS
+
+    croat-node:
+        image: "looongcat/croat-node:latest"
+        restart: always
+        env_file: .env
+        container_name: croat-node
+        expose:
+            - "8080"
+            - "8081"
+        volumes:
+            - "$BLOCKCHAIN_PATH:/home/.croat"
+        networks:
+            - croat-faucet-network
+    
+    croat-wallet:
+        image: "looongcat/croat-node:latest"
+        restart: always
+        env_file: .env
+        container_name: croat-wallet
+        volumes:
+            - $WALLET_PATH:/faucet-wallet.wallet
+        expose:
+            - "8070"
+        networks:
+            - croat-faucet-network
+        entrypoint:
+            - simplewallet
+            - --wallet-file=/faucet-wallet.wallet
+            - --pass=$WALLET_PASS
+            - --wallet-rpc-bind-port=8070
+            - --rpc-bind-ip=0.0.0.0
+            - --daemon-host=croat-node
+    
+    faucet-letsencrypt:
+        image: "certbot/certbot"
+        env_file: .env
+        container_name: faucet-letsencrypt
+        volumes:
+            - ./services/letsencrypt:/etc/letsencrypt:rw
+        expose:
+        - "80"
+        entrypoint:
+        - certbot
+        - certonly
+        - --standalone
+        - --agree-tos
+        - -n
+        - -d $DOMAIN_NAME
+        - -d www.$DOMAIN_NAME
+        - -m $DOMAIN_OWNER
+        networks:
+            - croat-faucet-network
+        
+networks:
+    croat-faucet-network:
+        driver: bridge
