@@ -1,9 +1,7 @@
 CREATE DATABASE IF NOT EXISTS `croat-faucet`;
 
-USE `croat-faucet`;
-
-CREATE TABLE IF NOT EXISTS `payouts` (
-`id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+CREATE TABLE IF NOT EXISTS `croat-faucet`.`payouts` (
+`id` bigint(20) unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT,
   `ip_address` varchar(45) NOT NULL,
   `payout_amount` double NOT NULL,
   `payout_address` varchar(100) NOT NULL,

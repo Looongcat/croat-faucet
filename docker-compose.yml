@@ -14,9 +14,9 @@ services:
             - ./services/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
             - ./services/letsencrypt/live/$DOMAIN_NAME/fullchain.pem:/etc/ssl/fullchain.pem:ro
             - ./services/letsencrypt/live/$DOMAIN_NAME/privkey.pem:/etc/ssl/privkey.pem:ro
-        links:
+        depends_on:
             - faucet-php-fpm
-            - faucet-letsencrypt
+            - faucet-db
         networks:
             - croat-faucet-network
 
@@ -27,7 +27,7 @@ services:
         container_name: faucet-php-fpm
         expose:
             - "9000"
-        links:
+        depends_on:
             - faucet-db
         volumes:
             - ./frontend:/www
@@ -51,9 +51,10 @@ services:
             - MYSQL_USER=$DB_USER
             - MYSQL_PASSWORD=$DB_PASS
             - MYSQL_ROOT_PASSWORD=$DB_ROOT_PASS
+            - MYSQL_DATABASE=croat-faucet
 
     croat-node:
-        image: "looongcat/croat-node:latest"
+        image: "looongcat/croat-node:$NODE_VERSION"
         restart: always
         env_file: .env
         container_name: croat-node
@@ -61,28 +62,32 @@ services:
             - "8080"
             - "8081"
         volumes:
-            - "$BLOCKCHAIN_PATH:/home/.croat"
+            - "$BLOCKCHAIN_PATH:/root/.croat"
+        mem_limit: 1024M
         networks:
             - croat-faucet-network
     
     croat-wallet:
-        image: "looongcat/croat-node:latest"
+        image: "looongcat/croat-node:$NODE_VERSION"
         restart: always
         env_file: .env
         container_name: croat-wallet
         volumes:
-            - $WALLET_PATH:/faucet-wallet.wallet
+            - $WALLET_PATH:/faucet-wallet.wallet:rw
         expose:
             - "8070"
         networks:
             - croat-faucet-network
+        depends_on:
+            - croat-node
         entrypoint:
-            - simplewallet
+            - /home/CROATCore/simplewallet
+            - --config-file=/home/CROATCore/configs/croat.conf
             - --wallet-file=/faucet-wallet.wallet
             - --pass=$WALLET_PASS
             - --wallet-rpc-bind-port=8070
-            - --rpc-bind-ip=0.0.0.0
-            - --daemon-host=croat-node
+            - --wallet-rpc-bind-ip=0.0.0.0
+            - --daemon-address=croat-node:8081
     
     faucet-letsencrypt:
         image: "certbot/certbot"
@@ -91,7 +96,9 @@ services:
         volumes:
             - ./services/letsencrypt:/etc/letsencrypt:rw
         expose:
-        - "80"
+            - "80"
+        depends_on:
+            - faucet-frontend 
         entrypoint:
         - certbot
         - certonly
@@ -99,7 +106,7 @@ services:
         - --agree-tos
         - -n
         - -d $DOMAIN_NAME
-        - -d www.$DOMAIN_NAME
+        #- -d www.$DOMAIN_NAME
         - -m $DOMAIN_OWNER
         networks:
             - croat-faucet-network
